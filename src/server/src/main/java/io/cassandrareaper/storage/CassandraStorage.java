@@ -16,6 +16,7 @@ package io.cassandrareaper.storage;
 
 import io.cassandrareaper.AppContext;
 import io.cassandrareaper.ReaperApplicationConfiguration;
+import io.cassandrareaper.ReaperException;
 import io.cassandrareaper.core.Cluster;
 import io.cassandrareaper.core.NodeMetrics;
 import io.cassandrareaper.core.RepairRun;
@@ -25,6 +26,7 @@ import io.cassandrareaper.core.RepairSchedule;
 import io.cassandrareaper.core.RepairSegment;
 import io.cassandrareaper.core.RepairSegment.State;
 import io.cassandrareaper.core.RepairUnit;
+import io.cassandrareaper.core.Segment;
 import io.cassandrareaper.core.Snapshot;
 import io.cassandrareaper.resources.view.RepairRunStatus;
 import io.cassandrareaper.resources.view.RepairScheduleStatus;
@@ -63,6 +65,8 @@ import com.datastax.driver.core.policies.DefaultRetryPolicy;
 import com.datastax.driver.core.policies.DowngradingConsistencyRetryPolicy;
 import com.datastax.driver.core.policies.RetryPolicy;
 import com.datastax.driver.core.utils.UUIDs;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
@@ -94,6 +98,7 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
 
   private final com.datastax.driver.core.Cluster cassandra;
   private final Session session;
+  private final ObjectMapper objectMapper = new ObjectMapper();
 
 
   /* prepared stmts */
@@ -210,8 +215,8 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
     insertRepairSegmentPrepStmt = session
         .prepare(
             "INSERT INTO repair_run"
-                + "(id,segment_id,repair_unit_id,start_token,end_token,segment_state,fail_count)"
-                + " VALUES(?, ?, ?, ?, ?, ?, ?)")
+                + "(id,segment_id,repair_unit_id,start_token,end_token,segment_state,fail_count, token_ranges)"
+                + " VALUES(?, ?, ?, ?, ?, ?, ?, ?)")
         .setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM);
     insertRepairSegmentIncrementalPrepStmt = session
         .prepare(
@@ -228,14 +233,16 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
     insertRepairSegmentEndTimePrepStmt = session
         .prepare("INSERT INTO repair_run(id, segment_id, segment_end_time) VALUES(?, ?, ?)")
         .setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM);
-    getRepairSegmentPrepStmt = session
-        .prepare(
-            "SELECT id,repair_unit_id,segment_id,start_token,end_token,segment_state,coordinator_host,"
-                + "segment_start_time,segment_end_time,fail_count FROM repair_run WHERE id = ? and segment_id = ?")
-        .setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM);
+    getRepairSegmentPrepStmt =
+        session
+            .prepare(
+                "SELECT id,repair_unit_id,segment_id,start_token,end_token,segment_state,coordinator_host,"
+                    + "segment_start_time,segment_end_time,fail_count, token_ranges"
+                    + " FROM repair_run WHERE id = ? and segment_id = ?")
+            .setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM);
     getRepairSegmentsByRunIdPrepStmt = session.prepare(
         "SELECT id,repair_unit_id,segment_id,start_token,end_token,segment_state,coordinator_host,segment_start_time,"
-            + "segment_end_time,fail_count FROM repair_run WHERE id = ?");
+            + "segment_end_time,fail_count, token_ranges FROM repair_run WHERE id = ?");
     insertRepairSchedulePrepStmt =
         session
             .prepare(
@@ -342,7 +349,8 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
   }
 
   @Override
-  public RepairRun addRepairRun(Builder repairRun, Collection<RepairSegment.Builder> newSegments) {
+  public RepairRun addRepairRun(Builder repairRun, Collection<RepairSegment.Builder> newSegments)
+      throws ReaperException {
     RepairRun newRepairRun = repairRun.build(UUIDs.timeBased());
     BatchStatement repairRunBatch = new BatchStatement(BatchStatement.Type.UNLOGGED);
     List<ResultSetFuture> futures = Lists.newArrayList();
@@ -390,18 +398,23 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
               segment.getFailCount()));
       } else {
 
-        repairRunBatch.add(
-            insertRepairSegmentPrepStmt.bind(
-              segment.getRunId(),
-              segment.getId(),
-              segment.getRepairUnitId(),
-              segment.getStartToken(),
-              segment.getEndToken(),
-              segment.getState().ordinal(),
-              segment.getFailCount()));
+        try {
+          repairRunBatch.add(
+              insertRepairSegmentPrepStmt.bind(
+                  segment.getRunId(),
+                  segment.getId(),
+                  segment.getRepairUnitId(),
+                  segment.getStartToken(),
+                  segment.getEndToken(),
+                  segment.getState().ordinal(),
+                  segment.getFailCount(),
+                  objectMapper.writeValueAsString(segment.getTokenRange().getTokenRanges())));
+        } catch (JsonProcessingException e) {
+          throw new ReaperException(e);
+        }
       }
 
-      if (100 <= repairRunBatch.size()) {
+      if (100 <= repairRunBatch.size() || segment.getTokenRange().getTokenRanges().size() > 1) {
         futures.add(session.executeAsync(repairRunBatch));
         repairRunBatch = new BatchStatement(BatchStatement.Type.UNLOGGED);
       }
@@ -700,14 +713,27 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
 
   private static RepairSegment createRepairSegmentFromRow(Row segmentRow) {
 
-    RepairSegment.Builder builder = RepairSegment.builder(
+    List<RingRange> tokenRanges =
+        JsonParseUtils.parseRingRangeList(
+            Optional.fromNullable(segmentRow.getString("token_ranges")));
+
+    io.cassandrareaper.core.Segment.Builder segmentBuilder = Segment.builder();
+
+    if (tokenRanges.size() > 0) {
+      segmentBuilder.withTokenRanges(tokenRanges);
+    } else {
+      // legacy path, for segments that don't have a token range list
+      segmentBuilder.withTokenRange(
           new RingRange(
               new BigInteger(segmentRow.getVarint("start_token") + ""),
-              new BigInteger(segmentRow.getVarint("end_token") + "")),
-          segmentRow.getUUID("repair_unit_id"))
-        .withRunId(segmentRow.getUUID("id"))
-        .withState(State.values()[segmentRow.getInt("segment_state")])
-        .withFailCount(segmentRow.getInt("fail_count"));
+              new BigInteger(segmentRow.getVarint("end_token") + "")));
+    }
+
+    RepairSegment.Builder builder =
+        RepairSegment.builder(segmentBuilder.build(), segmentRow.getUUID("repair_unit_id"))
+            .withRunId(segmentRow.getUUID("id"))
+            .withState(State.values()[segmentRow.getInt("segment_state")])
+            .withFailCount(segmentRow.getInt("fail_count"));
 
     if (null != segmentRow.getString("coordinator_host")) {
       builder = builder.withCoordinatorHost(segmentRow.getString("coordinator_host"));
@@ -762,7 +788,7 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
         Optional<RepairUnit> repairUnit = getRepairUnit(repairRun.getRepairUnitId());
         repairs.add(
             new RepairParameters(
-                new RingRange(segment.getStartToken(), segment.getEndToken()),
+                Segment.builder().withTokenRanges(segment.getTokenRange().getTokenRanges()).build(),
                 repairUnit.get().getKeyspaceName(),
                 repairUnit.get().getColumnFamilies(),
                 repairRun.getRepairParallelism()));

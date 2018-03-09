@@ -28,7 +28,6 @@ import io.cassandrareaper.jmx.RepairStatusHandler;
 import io.cassandrareaper.resources.view.RepairRunStatus;
 import io.cassandrareaper.service.RepairManager;
 import io.cassandrareaper.service.RepairRunnerTest;
-import io.cassandrareaper.service.RingRange;
 import io.cassandrareaper.storage.MemoryStorage;
 
 import java.math.BigInteger;
@@ -119,8 +118,8 @@ public final class RepairRunResourceTest {
     when(proxy.getEndpointToHostId()).thenReturn(NODES_MAP);
     when(proxy.getTokens()).thenReturn(TOKENS);
     when(proxy.isConnectionAlive()).thenReturn(Boolean.TRUE);
-    when(proxy.tokenRangeToEndpoint(anyString(), any(RingRange.class))).thenReturn(
-        Collections.singletonList(""));
+    when(proxy.tokenRangeToEndpoint(anyString(), any(io.cassandrareaper.core.Segment.class)))
+        .thenReturn(Collections.singletonList(""));
     when(proxy.getRangeToEndpointMap(anyString())).thenReturn(RepairRunnerTest.sixNodeCluster());
     when(proxy.triggerRepair(
             any(BigInteger.class),
@@ -130,6 +129,7 @@ public final class RepairRunResourceTest {
             anyCollectionOf(String.class),
             anyBoolean(),
             anyCollectionOf(String.class),
+            any(),
             any()))
         .thenReturn(1);
 

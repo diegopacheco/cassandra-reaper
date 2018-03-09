@@ -22,6 +22,7 @@ import io.cassandrareaper.core.Node;
 import io.cassandrareaper.core.RepairRun;
 import io.cassandrareaper.core.RepairSegment;
 import io.cassandrareaper.core.RepairUnit;
+import io.cassandrareaper.core.Segment;
 import io.cassandrareaper.jmx.JmxConnectionFactory;
 import io.cassandrareaper.jmx.JmxProxy;
 import io.cassandrareaper.jmx.RepairStatusHandler;
@@ -81,9 +82,16 @@ public final class SegmentRunnerTest {
                 Sets.newHashSet("127.0.0.1"),
                 Collections.emptySet(),
                 Collections.emptySet()));
-    RepairRun run = context.storage.addRepairRun(
-        new RepairRun.Builder("reaper", cf.getId(), DateTime.now(), 0.5, 1, RepairParallelism.PARALLEL),
-        Collections.singleton(RepairSegment.builder(new RingRange(BigInteger.ONE, BigInteger.ZERO), cf.getId())));
+    RepairRun run =
+        context.storage.addRepairRun(
+            new RepairRun.Builder(
+                "reaper", cf.getId(), DateTime.now(), 0.5, 1, RepairParallelism.PARALLEL),
+            Collections.singleton(
+                RepairSegment.builder(
+                    Segment.builder()
+                        .withTokenRange(new RingRange(BigInteger.ONE, BigInteger.ZERO))
+                        .build(),
+                    cf.getId())));
 
     final UUID runId = run.getId();
     final UUID segmentId = context.storage.getNextFreeSegmentInRange(run.getId(), Optional.absent()).get().getId();
@@ -101,20 +109,20 @@ public final class SegmentRunnerTest {
             JmxProxy jmx = mock(JmxProxy.class);
             when(jmx.getClusterName()).thenReturn("reaper");
             when(jmx.isConnectionAlive()).thenReturn(true);
-            when(jmx.tokenRangeToEndpoint(anyString(), any(RingRange.class)))
+            when(jmx.tokenRangeToEndpoint(anyString(), any(Segment.class)))
                 .thenReturn(Lists.newArrayList(""));
             when(jmx.getDataCenter()).thenReturn("dc1");
             when(jmx.getDataCenter(anyString())).thenReturn("dc1");
 
             when(jmx.triggerRepair(
-                any(BigInteger.class),
-                any(BigInteger.class),
-                any(),
-                any(RepairParallelism.class),
-                any(),
-                anyBoolean(),
-                any(),
-                any()))
+                    any(BigInteger.class),
+                    any(BigInteger.class),
+                    any(),
+                    any(RepairParallelism.class),
+                    any(),
+                    anyBoolean(),
+                    any(),
+                    any(), any()))
                 .then(
                     (invocation) -> {
                       assertEquals(
@@ -186,9 +194,16 @@ public final class SegmentRunnerTest {
                 Sets.newHashSet("127.0.0.1"),
                 Collections.emptySet(),
                 Collections.emptySet()));
-    RepairRun run = storage.addRepairRun(
-        new RepairRun.Builder("reaper", cf.getId(), DateTime.now(), 0.5, 1, RepairParallelism.PARALLEL),
-        Collections.singleton(RepairSegment.builder(new RingRange(BigInteger.ONE, BigInteger.ZERO), cf.getId())));
+    RepairRun run =
+        storage.addRepairRun(
+            new RepairRun.Builder(
+                "reaper", cf.getId(), DateTime.now(), 0.5, 1, RepairParallelism.PARALLEL),
+            Collections.singleton(
+                RepairSegment.builder(
+                    Segment.builder()
+                        .withTokenRange(new RingRange(BigInteger.ONE, BigInteger.ZERO))
+                        .build(),
+                    cf.getId())));
     final UUID runId = run.getId();
     final UUID segmentId = storage.getNextFreeSegmentInRange(run.getId(), Optional.absent()).get().getId();
 
@@ -211,20 +226,20 @@ public final class SegmentRunnerTest {
             JmxProxy jmx = mock(JmxProxy.class);
             when(jmx.getClusterName()).thenReturn("reaper");
             when(jmx.isConnectionAlive()).thenReturn(true);
-            when(jmx.tokenRangeToEndpoint(anyString(), any(RingRange.class)))
+            when(jmx.tokenRangeToEndpoint(anyString(), any(Segment.class)))
                 .thenReturn(Lists.newArrayList(""));
             when(jmx.getDataCenter()).thenReturn("dc1");
             when(jmx.getDataCenter(anyString())).thenReturn("dc1");
 
             when(jmx.triggerRepair(
-                any(BigInteger.class),
-                any(BigInteger.class),
-                any(),
-                any(RepairParallelism.class),
-                any(),
-                anyBoolean(),
-                any(),
-                any()))
+                    any(BigInteger.class),
+                    any(BigInteger.class),
+                    any(),
+                    any(RepairParallelism.class),
+                    any(),
+                    anyBoolean(),
+                    any(),
+                    any(), any()))
                 .then(
                     invocation -> {
                       assertEquals(
@@ -325,9 +340,16 @@ public final class SegmentRunnerTest {
                 Sets.newHashSet("127.0.0.1"),
                 Collections.emptySet(),
                 Collections.emptySet()));
-    RepairRun run = storage.addRepairRun(
-        new RepairRun.Builder("reaper", cf.getId(), DateTime.now(), 0.5, 1, RepairParallelism.PARALLEL),
-        Collections.singleton(RepairSegment.builder(new RingRange(BigInteger.ONE, BigInteger.ZERO), cf.getId())));
+    RepairRun run =
+        storage.addRepairRun(
+            new RepairRun.Builder(
+                "reaper", cf.getId(), DateTime.now(), 0.5, 1, RepairParallelism.PARALLEL),
+            Collections.singleton(
+                RepairSegment.builder(
+                    Segment.builder()
+                        .withTokenRange(new RingRange(BigInteger.ONE, BigInteger.ZERO))
+                        .build(),
+                    cf.getId())));
     final UUID runId = run.getId();
     final UUID segmentId = storage.getNextFreeSegmentInRange(run.getId(), Optional.absent()).get().getId();
 
@@ -350,20 +372,20 @@ public final class SegmentRunnerTest {
             JmxProxy jmx = mock(JmxProxy.class);
             when(jmx.getClusterName()).thenReturn("reaper");
             when(jmx.isConnectionAlive()).thenReturn(true);
-            when(jmx.tokenRangeToEndpoint(anyString(), any(RingRange.class)))
+            when(jmx.tokenRangeToEndpoint(anyString(), any(Segment.class)))
                 .thenReturn(Lists.newArrayList(""));
             when(jmx.getDataCenter()).thenReturn("dc1");
             when(jmx.getDataCenter(anyString())).thenReturn("dc1");
 
             when(jmx.triggerRepair(
-                any(BigInteger.class),
-                any(BigInteger.class),
-                any(),
-                any(RepairParallelism.class),
-                any(),
-                anyBoolean(),
-                any(),
-                any()))
+                    any(BigInteger.class),
+                    any(BigInteger.class),
+                    any(),
+                    any(RepairParallelism.class),
+                    any(),
+                    anyBoolean(),
+                    any(),
+                    any(), any()))
                 .then(
                     (invocation) -> {
                       assertEquals(

@@ -14,6 +14,7 @@
 
 package io.cassandrareaper.storage;
 
+import io.cassandrareaper.ReaperException;
 import io.cassandrareaper.core.Cluster;
 import io.cassandrareaper.core.RepairRun;
 import io.cassandrareaper.core.RepairSchedule;
@@ -55,7 +56,8 @@ public interface IStorage {
    */
   Optional<Cluster> deleteCluster(String clusterName);
 
-  RepairRun addRepairRun(RepairRun.Builder repairRun, Collection<RepairSegment.Builder> newSegments);
+  RepairRun addRepairRun(RepairRun.Builder repairRun, Collection<RepairSegment.Builder> newSegments)
+      throws ReaperException;
 
   boolean updateRepairRun(RepairRun repairRun);
 
