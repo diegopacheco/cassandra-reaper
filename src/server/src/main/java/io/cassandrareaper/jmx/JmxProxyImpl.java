@@ -1091,8 +1091,16 @@ final class JmxProxyImpl implements JmxProxy {
   }
 
   @Override
-  public List<Snapshot> listSnapshots() {
+  public List<Snapshot> listSnapshots() throws ReaperException {
     List<Snapshot> snapshots = Lists.newArrayList();
+
+    String cassandraVersion = getCassandraVersion();
+    if (versionCompare(cassandraVersion, "2.1.0") < 0) {
+      // 2.0 and prior do not allow to list snapshots
+      throw new UnsupportedOperationException(
+          "Snapshot listing is not supported in Cassandra 2.0 and prior.");
+    }
+
     final Map<String, TabularData> snapshotDetails =
         ((StorageServiceMBean) ssProxy).getSnapshotDetails();
     if (snapshotDetails.isEmpty()) {
